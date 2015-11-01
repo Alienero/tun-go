@@ -57,7 +57,8 @@ func openTunTap() (syscall.Handle, int, error) {
 	configTunParam := append(TUN_IPv4_ADDRESS, TUN_IPv4_NETWORK...)
 	configTunParam = append(configTunParam, TUN_IPv4_NETMASK...)
 	configTunParam = chrs(configTunParam)
-	if err = syscall.DeviceIoControl(tuntap,
+	if err = syscall.DeviceIoControl(
+		tuntap,
 		TAP_IOCTL_CONFIG_TUN,
 		&configTunParam[0],
 		uint32(len(configTunParam)),
@@ -70,7 +71,8 @@ func openTunTap() (syscall.Handle, int, error) {
 
 	// get MTU
 	var umtu = make([]byte, 4)
-	if err = syscall.DeviceIoControl(tuntap,
+	if err = syscall.DeviceIoControl(
+		tuntap,
 		TAP_IOCTL_GET_MTU,
 		nil,
 		0,
@@ -85,7 +87,8 @@ func openTunTap() (syscall.Handle, int, error) {
 
 	// set connect.
 	inBuffer := []byte("\x01\x00\x00\x00")
-	if err = syscall.DeviceIoControl(tuntap,
+	if err = syscall.DeviceIoControl(
+		tuntap,
 		TAP_IOCTL_SET_MEDIA_STATUS,
 		&inBuffer[0],
 		uint32(len(inBuffer)),
@@ -107,7 +110,15 @@ func getTuntapComponentId() (string, error) {
 	for ; i < 1000; i++ {
 		var name_length uint32 = TAPWIN32_MAX_REG_SIZE
 		buf := make([]uint16, name_length)
-		if err = syscall.RegEnumKeyEx(syscall.Handle(adapters), i, &buf[0], &name_length, nil, nil, nil, nil); err != nil {
+		if err = syscall.RegEnumKeyEx(
+			syscall.Handle(adapters),
+			i,
+			&buf[0],
+			&name_length,
+			nil,
+			nil,
+			nil,
+			nil); err != nil {
 			return "", err
 		}
 		key_name := syscall.UTF16ToString(buf[:])
@@ -122,7 +133,13 @@ func getTuntapComponentId() (string, error) {
 		var component_id = make([]byte, TAPWIN32_MAX_REG_SIZE)
 		// var pbuf = (*byte)(unsafe.Pointer(&component_id[0]))
 		var componentLen = uint32(len(component_id))
-		if err = syscall.RegQueryValueEx(syscall.Handle(adapter), &name[0], nil, &valtype, &component_id[0], &componentLen); err != nil {
+		if err = syscall.RegQueryValueEx(
+			syscall.Handle(adapter),
+			&name[0],
+			nil,
+			&valtype,
+			&component_id[0],
+			&componentLen); err != nil {
 			return "", err
 		}
 
@@ -130,7 +147,13 @@ func getTuntapComponentId() (string, error) {
 			var valtype uint32
 			var netCfgInstanceId = make([]byte, TAPWIN32_MAX_REG_SIZE)
 			var netCfgInstanceIdLen = uint32(len(netCfgInstanceId))
-			if err = syscall.RegQueryValueEx(syscall.Handle(adapter), &name2[0], nil, &valtype, &netCfgInstanceId[0], &netCfgInstanceIdLen); err != nil {
+			if err = syscall.RegQueryValueEx(
+				syscall.Handle(adapter),
+				&name2[0],
+				nil,
+				&valtype,
+				&netCfgInstanceId[0],
+				&netCfgInstanceIdLen); err != nil {
 				return "", err
 			}
 			fmt.Println("last:", unicodeTostring(netCfgInstanceId))
