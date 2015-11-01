@@ -7,6 +7,7 @@ import (
 	"net"
 	"syscall"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -161,6 +162,53 @@ func getTuntapComponentId() (string, error) {
 		}
 	}
 	return "", errors.New("not found component id")
+}
+
+func ReadChannel(taptun syscall.Handle, mtu int, ch chan []byte) (err error) {
+	overlappedRx := syscall.Overlapped{}
+	var hevent windows.Handle
+	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		return
+	}
+	overlappedRx.HEvent = syscall.Handle(hevent)
+	buf := make([]byte, mtu)
+	var l uint32
+	for {
+		if err = syscall.ReadFile(taptun, buf, &l, &overlappedRx); err != nil {
+			return
+		}
+		if _, err = syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
+			return
+		}
+		overlappedRx.Offset += l
+		// send data into channel.
+		ch <- buf[:l]
+	}
+}
+
+func WriteFromChannel(taptun syscall.Handle, ch chan []byte) (err error) {
+	overlappedRx := syscall.Overlapped{}
+	var hevent windows.Handle
+	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		return
+	}
+	overlappedRx.HEvent = syscall.Handle(hevent)
+	for {
+		select {
+		case data := <-ch:
+			var l uint32
+			if err = syscall.WriteFile(taptun, data, &l, &overlappedRx); err != nil {
+				return nil
+			}
+			if _, err = syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
+				return
+			}
+			overlappedRx.Offset += uint32(len(data))
+			fmt.Println("data len:", len(data), "write:", l)
+		}
+	}
 }
 
 func unicodeTostring(src []byte) string {
