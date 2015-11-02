@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"net"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -22,9 +21,9 @@ var (
 	TAP_IOCTL_SET_MEDIA_STATUS = tap_control_code(6, 0)
 	TAP_IOCTL_CONFIG_TUN       = tap_control_code(10, 0)
 
-	TUN_IPv4_ADDRESS = net.IPv4(10, 1, 0, 1)          // < The IPv4 address of the TUN interface.
-	TUN_IPv4_NETWORK = net.IPv4(10, 1, 0, 0)          // < The IPv4 address of the TUN interface's network.
-	TUN_IPv4_NETMASK = net.IPv4Mask(255, 255, 255, 0) // < The IPv4 netmask of the TUN interface.
+	TUN_IPv4_ADDRESS = []byte{10, 0, 0, 1}      // < The IPv4 address of the TUN interface.
+	TUN_IPv4_NETWORK = []byte{10, 0, 0, 0}      // < The IPv4 address of the TUN interface's network.
+	TUN_IPv4_NETMASK = []byte{255, 255, 255, 0} // < The IPv4 netmask of the TUN interface.
 )
 
 func main() {
@@ -32,7 +31,42 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(taptun, mtu)
+	ch := make(chan []byte, 4096)
+	c := make(chan []byte, 4096)
+	// go WriteFromChannel(taptun, c)
+
+	go func() {
+		for {
+			select {
+			case data := <-ch:
+				// fmt.Println(data)
+				if (data[0] & 0xf0) == 0x40 {
+					fmt.Println("IPv4")
+					total_length := 256*int(data[2]) + int(data[3])
+					data = data[:total_length]
+					if data[9] == 0x01 {
+						// # ICMPv4
+						if data[20] == 0x08 {
+							// IPv4 echo request
+							fmt.Println("Received IPv4 echo request")
+							// echoReply = self._createIpv4EchoReply(p)
+							// # send over interface
+							// self.transmit(echoReply)
+							// # print
+							// print 'Transmitted IPv4 echo reply'
+						} else if data[20] == 0x00 {
+							fmt.Println("Get Reply")
+						}
+					}
+				}
+			}
+		}
+
+	}()
+	go WriteFromChannel(taptun, c)
+	if err = ReadChannel(taptun, mtu, ch); err != nil {
+		panic(err)
+	}
 }
 
 func openTunTap() (syscall.Handle, int, error) {
@@ -57,7 +91,7 @@ func openTunTap() (syscall.Handle, int, error) {
 	var returnLen uint32
 	configTunParam := append(TUN_IPv4_ADDRESS, TUN_IPv4_NETWORK...)
 	configTunParam = append(configTunParam, TUN_IPv4_NETMASK...)
-	configTunParam = chrs(configTunParam)
+	configTunParam = configTunParam
 	if err = syscall.DeviceIoControl(
 		tuntap,
 		TAP_IOCTL_CONFIG_TUN,
@@ -99,6 +133,7 @@ func openTunTap() (syscall.Handle, int, error) {
 		nil); err != nil {
 		return 0, 0, err
 	}
+	fmt.Println("inbuffer", inBuffer)
 	return tuntap, int(mtu), nil
 }
 
@@ -175,15 +210,10 @@ func ReadChannel(taptun syscall.Handle, mtu int, ch chan []byte) (err error) {
 	buf := make([]byte, mtu)
 	var l uint32
 	for {
-		if err = syscall.ReadFile(taptun, buf, &l, &overlappedRx); err != nil {
-			return
-		}
-		if _, err = syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
-			return
-		}
+		syscall.ReadFile(taptun, buf, &l, &overlappedRx)
+		syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
 		overlappedRx.Offset += l
-		// send data into channel.
-		ch <- buf[:l]
+		ch <- buf
 	}
 }
 
@@ -199,14 +229,9 @@ func WriteFromChannel(taptun syscall.Handle, ch chan []byte) (err error) {
 		select {
 		case data := <-ch:
 			var l uint32
-			if err = syscall.WriteFile(taptun, data, &l, &overlappedRx); err != nil {
-				return nil
-			}
-			if _, err = syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
-				return
-			}
+			syscall.WriteFile(taptun, data, &l, &overlappedRx)
+			syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
 			overlappedRx.Offset += uint32(len(data))
-			fmt.Println("data len:", len(data), "write:", l)
 		}
 	}
 }
@@ -227,12 +252,4 @@ func ctl_code(device_type, function, method, access uint32) uint32 {
 
 func tap_control_code(request, method uint32) uint32 {
 	return ctl_code(34, request, method, 0)
-}
-
-func chrs(src []byte) []byte {
-	var s string
-	for _, c := range src {
-		s += string(c)
-	}
-	return []byte(s)
 }
