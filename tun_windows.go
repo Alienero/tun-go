@@ -1,4 +1,4 @@
-package main
+package tun
 
 import (
 	"encoding/binary"
@@ -29,40 +29,38 @@ var (
 
 )
 
-func main() {
-	taptun, mtu, err := openTunTap()
-	if err != nil {
-		panic(err)
-	}
-	ch := make(chan []byte, 4096)
-	c := make(chan []byte, 4096)
-	// go WriteFromChannel(taptun, c)
+// func main() {
+// 	taptun, mtu, err := OpenTunTap()
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	ch := make(chan []byte, 4096)
+// 	c := make(chan []byte, 4096)
+// 	// go WriteFromChannel(taptun, c)
+// 	go func() {
+// 		for {
+// 			select {
+// 			case data := <-ch:
+// 				// fmt.Println(len(data), data)
+// 				if (data[0] & 0xf0) == 0x40 {
+// 					srcIp := data[12:16]
+// 					dstIp := data[16:20]
+// 					fmt.Println(net.IP(srcIp), net.IP(dstIp))
+// 				} else if (data[0] & 0xf0) == 0x60 {
+// 					srcIp := data[8:24]
+// 					dstIp := data[24:40]
+// 					fmt.Println(net.IP(srcIp), net.IP(dstIp))
+// 				}
+// 			}
+// 		}
 
-	go func() {
-		for {
-			select {
-			case data := <-ch:
-				// fmt.Println(len(data), data)
-				if (data[0] & 0xf0) == 0x40 {
-					srcIp := data[12:16]
-					dstIp := data[16:20]
-					fmt.Println(net.IP(srcIp), net.IP(dstIp))
-				} else if (data[0] & 0xf0) == 0x60 {
-					srcIp := data[8:24]
-					dstIp := data[24:40]
-					fmt.Println(net.IP(srcIp), net.IP(dstIp))
-				}
-			}
-		}
-
-	}()
-	go WriteFromChannel(taptun, c)
-	if err = ReadChannel(taptun, mtu, ch); err != nil {
-		panic(err)
-	}
-}
-
-func openTunTap() (syscall.Handle, int, error) {
+// 	}()
+// 	go WriteFromChannel(taptun, c)
+// 	if err = ReadChannel(taptun, mtu, ch); err != nil {
+// 		panic(err)
+// 	}
+// }
+func OpenTunTap() (syscall.Handle, int, error) {
 	id, err := getTuntapComponentId()
 	if err != nil {
 		return 0, 0, err
