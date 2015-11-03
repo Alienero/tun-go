@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -14,6 +15,7 @@ const (
 	TAPWIN32_MAX_REG_SIZE = 256
 	TUNTAP_COMPONENT_ID   = "tap0901"
 	ADAPTER_KEY           = `SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}`
+	IPv6_HEADER_LENGTH    = 40
 )
 
 var (
@@ -24,6 +26,7 @@ var (
 	TUN_IPv4_ADDRESS = []byte{10, 0, 0, 1}      // < The IPv4 address of the TUN interface.
 	TUN_IPv4_NETWORK = []byte{10, 0, 0, 0}      // < The IPv4 address of the TUN interface's network.
 	TUN_IPv4_NETMASK = []byte{255, 255, 255, 0} // < The IPv4 netmask of the TUN interface.
+
 )
 
 func main() {
@@ -39,25 +42,15 @@ func main() {
 		for {
 			select {
 			case data := <-ch:
-				// fmt.Println(data)
+				// fmt.Println(len(data), data)
 				if (data[0] & 0xf0) == 0x40 {
-					fmt.Println("IPv4")
-					total_length := 256*int(data[2]) + int(data[3])
-					data = data[:total_length]
-					if data[9] == 0x01 {
-						// # ICMPv4
-						if data[20] == 0x08 {
-							// IPv4 echo request
-							fmt.Println("Received IPv4 echo request")
-							// echoReply = self._createIpv4EchoReply(p)
-							// # send over interface
-							// self.transmit(echoReply)
-							// # print
-							// print 'Transmitted IPv4 echo reply'
-						} else if data[20] == 0x00 {
-							fmt.Println("Get Reply")
-						}
-					}
+					srcIp := data[12:16]
+					dstIp := data[16:20]
+					fmt.Println(net.IP(srcIp), net.IP(dstIp))
+				} else if (data[0] & 0xf0) == 0x60 {
+					srcIp := data[8:24]
+					dstIp := data[24:40]
+					fmt.Println(net.IP(srcIp), net.IP(dstIp))
 				}
 			}
 		}
@@ -87,7 +80,6 @@ func openTunTap() (syscall.Handle, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	fmt.Println("tuntap", tuntap)
 	var returnLen uint32
 	configTunParam := append(TUN_IPv4_ADDRESS, TUN_IPv4_NETWORK...)
 	configTunParam = append(configTunParam, TUN_IPv4_NETMASK...)
@@ -118,7 +110,6 @@ func openTunTap() (syscall.Handle, int, error) {
 		return 0, 0, err
 	}
 	mtu := binary.LittleEndian.Uint32(umtu)
-	fmt.Println(mtu, returnLen)
 
 	// set connect.
 	inBuffer := []byte("\x01\x00\x00\x00")
@@ -133,7 +124,6 @@ func openTunTap() (syscall.Handle, int, error) {
 		nil); err != nil {
 		return 0, 0, err
 	}
-	fmt.Println("inbuffer", inBuffer)
 	return tuntap, int(mtu), nil
 }
 
@@ -158,7 +148,6 @@ func getTuntapComponentId() (string, error) {
 			return "", err
 		}
 		key_name := syscall.UTF16ToString(buf[:])
-		// fmt.Println("key_name", key_name)
 		adapter, err := registry.OpenKey(adapters, key_name, registry.READ)
 		if err != nil {
 			return "", err
@@ -167,7 +156,6 @@ func getTuntapComponentId() (string, error) {
 		name2 := syscall.StringToUTF16("NetCfgInstanceId")
 		var valtype uint32
 		var component_id = make([]byte, TAPWIN32_MAX_REG_SIZE)
-		// var pbuf = (*byte)(unsafe.Pointer(&component_id[0]))
 		var componentLen = uint32(len(component_id))
 		if err = syscall.RegQueryValueEx(
 			syscall.Handle(adapter),
@@ -213,7 +201,16 @@ func ReadChannel(taptun syscall.Handle, mtu int, ch chan []byte) (err error) {
 		syscall.ReadFile(taptun, buf, &l, &overlappedRx)
 		syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
 		overlappedRx.Offset += l
-		ch <- buf
+		totalLen := 0
+		switch buf[0] & 0xf0 {
+		case 0x40:
+			totalLen = 256*int(buf[2]) + int(buf[3])
+		case 0x60:
+			totalLen = 256*int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
+		}
+		send := make([]byte, totalLen)
+		copy(send, buf)
+		ch <- send
 	}
 }
 
