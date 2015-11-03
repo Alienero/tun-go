@@ -15,7 +15,6 @@ const (
 	TAPWIN32_MAX_REG_SIZE = 256
 	TUNTAP_COMPONENT_ID   = "tap0901"
 	ADAPTER_KEY           = `SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}`
-	IPv6_HEADER_LENGTH    = 40
 )
 
 var (
@@ -36,7 +35,7 @@ var (
 // 	}
 // 	ch := make(chan []byte, 4096)
 // 	c := make(chan []byte, 4096)
-// 	// go WriteFromChannel(taptun, c)
+// 	// go WriteIntoChannel(taptun, c)
 // 	go func() {
 // 		for {
 // 			select {
@@ -55,8 +54,8 @@ var (
 // 		}
 
 // 	}()
-// 	go WriteFromChannel(taptun, c)
-// 	if err = ReadChannel(taptun, mtu, ch); err != nil {
+// 	go WriteIntoChannel(taptun, c)
+// 	if err = ReadFromChannel(taptun, mtu, ch); err != nil {
 // 		panic(err)
 // 	}
 // }
@@ -185,7 +184,7 @@ func getTuntapComponentId() (string, error) {
 	return "", errors.New("not found component id")
 }
 
-func ReadChannel(taptun syscall.Handle, mtu int, ch chan []byte) (err error) {
+func ReadFromChannel(taptun syscall.Handle, mtu int, ch chan []byte) (err error) {
 	overlappedRx := syscall.Overlapped{}
 	var hevent windows.Handle
 	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
@@ -212,7 +211,7 @@ func ReadChannel(taptun syscall.Handle, mtu int, ch chan []byte) (err error) {
 	}
 }
 
-func WriteFromChannel(taptun syscall.Handle, ch chan []byte) (err error) {
+func WriteIntoChannel(taptun syscall.Handle, ch chan []byte) (err error) {
 	overlappedRx := syscall.Overlapped{}
 	var hevent windows.Handle
 	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
