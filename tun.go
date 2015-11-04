@@ -5,7 +5,7 @@ const (
 )
 
 type Tun interface {
-	ReadFromChannel(ch chan []byte) error
-	WriteIntoChannel(ch chan []byte) error
+	Read(ch chan []byte) error
+	Write(ch chan []byte) error
 	Close() error
 }

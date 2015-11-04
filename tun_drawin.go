@@ -15,7 +15,7 @@ type tuntap struct {
 	fd         *os.File
 }
 
-func OpenTunTap(addr net.IP, mask net.IPMask) (Tun, error) {
+func OpenTunTap(addr net.IP, network net.IP, mask net.IP) (Tun, error) {
 	t := &tuntap{
 		mtu: 1500,
 	}
@@ -36,19 +36,19 @@ func OpenTunTap(addr net.IP, mask net.IPMask) (Tun, error) {
 	}
 
 	log.Printf("[INFO] TUN/TAP device %s opened.", t.actualName)
-	if err := t.setupAddress(addr, mask); err != nil {
+	if err := t.setupAddress(addr, network, mask); err != nil {
 		return nil, err
 	}
 	return t, nil
 }
 
-func (tun *tuntap) setupAddress(addr net.IP, mask net.IPMask) error {
+func (tun *tuntap) setupAddress(addr net.IP, network net.IP, mask net.IP) error {
 	cmd := exec.Command("/sbin/ifconfig", tun.actualName, "delete")
 	_ = cmd.Run()
 	log.Printf("[INFO] NOTE: Tried to delete pre-existing TUN/TAP instance -- no problem if failed.")
 
 	cmd = exec.Command("/sbin/ifconfig", tun.actualName,
-		addr.String(), addr.String(), "netmask", mask.String(), "mtu", "1500", "up")
+		addr.String(), network.String(), "netmask", mask.String(), "mtu", "1500", "up")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("Mac OS X ifconfig failed: %v: %s", err, output)
@@ -56,7 +56,7 @@ func (tun *tuntap) setupAddress(addr net.IP, mask net.IPMask) error {
 	return nil
 }
 
-func (tun *tuntap) ReadFromChannel(ch chan []byte) error {
+func (tun *tuntap) Write(ch chan []byte) error {
 	for {
 		select {
 		case data := <-ch:
@@ -67,7 +67,7 @@ func (tun *tuntap) ReadFromChannel(ch chan []byte) error {
 	}
 }
 
-func (tun *tuntap) WriteIntoChannel(ch chan []byte) error {
+func (tun *tuntap) Read(ch chan []byte) error {
 	buf := make([]byte, tun.mtu)
 	for {
 		n, err := tun.fd.Read(buf)
