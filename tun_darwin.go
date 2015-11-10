@@ -57,40 +57,13 @@ func (tun *tuntap) setupAddress(addr net.IP, network net.IP, mask net.IP) error 
 }
 
 func (tun *tuntap) Write(ch chan []byte) error {
-	for {
-		select {
-		case data := <-ch:
-			if _, err := tun.fd.Write(data); err != nil {
-				return err
-			}
-		}
-	}
+	return write(tun.fd, ch)
 }
 
 func (tun *tuntap) Read(ch chan []byte) error {
-	buf := make([]byte, tun.mtu)
-	for {
-		n, err := tun.fd.Read(buf)
-		if err != nil {
-			return err
-		}
-		// check length.
-		totalLen := 0
-		switch buf[0] & 0xf0 {
-		case 0x40:
-			totalLen = 256*int(buf[2]) + int(buf[3])
-		case 0x60:
-			totalLen = 256*int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
-		}
-		if totalLen != n {
-			return fmt.Errorf("read n(%v)!=total(%v)", n, totalLen)
-		}
-		send := make([]byte, totalLen)
-		copy(send, buf)
-		ch <- send
-	}
+	return read(tun.fd, tun.mtu, ch)
 }
 
 func (tun *tuntap) Close() error {
-	return tun.fd.Close()
+	return close(tun.fd)
 }
