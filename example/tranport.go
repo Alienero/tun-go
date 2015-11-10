@@ -11,11 +11,11 @@ import (
 // first start server tun server.
 func main() {
 	wg := sync.WaitGroup{}
-	remoteAddr, err := net.ResolveUDPAddr("udp", "192.168.199.110:37989")
+	remoteAddr, err := net.ResolveUDPAddr("udp", "192.168.199.131:37988")
 	if err != nil {
 		panic(err)
 	}
-	localAddr, err := net.ResolveUDPAddr("udp", ":37988")
+	localAddr, err := net.ResolveUDPAddr("udp", "192.168.199.174:37988")
 	if err != nil {
 		panic(err)
 	}
@@ -37,7 +37,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			log.Println("tun<-conn:", n)
+			// log.Println("tun<-conn:", n)
 			// write into local tun interface channel.
 			wCh <- buff[:n]
 		}
@@ -49,16 +49,21 @@ func main() {
 		for {
 			select {
 			case data := <-rCh:
+				// if data[0]&0xf0 == 0x40 {
 				// write into udp conn.
 				log.Println("tun->conn:", len(data))
+				log.Println("read!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+				log.Println("src:", net.IP(data[12:16]), "dst:", net.IP(data[16:20]))
 				if _, err := conn.Write(data); err != nil {
 					panic(err)
+					// }
 				}
+
 			}
 		}
 	}()
 
-	tuntap, err := tun.OpenTunTap(net.IPv4(10, 0, 0, 1), net.IPv4(10, 0, 0, 2), net.IPv4(255, 255, 255, 0))
+	tuntap, err := tun.OpenTunTap(net.IPv4(10, 0, 0, 1), net.IPv4(10, 0, 0, 0), net.IPv4(255, 255, 255, 0))
 	if err != nil {
 		panic(err)
 	}

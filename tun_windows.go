@@ -1,7 +1,7 @@
 package tun
 
 import (
-	"encoding/binary"
+	// "encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -21,51 +21,22 @@ var (
 	TAP_IOCTL_GET_MTU          = tap_control_code(3, 0)
 	TAP_IOCTL_SET_MEDIA_STATUS = tap_control_code(6, 0)
 	TAP_IOCTL_CONFIG_TUN       = tap_control_code(10, 0)
-
-	TUN_IPv4_ADDRESS = []byte{10, 0, 0, 1}      // < The IPv4 address of the TUN interface.
-	TUN_IPv4_NETWORK = []byte{10, 0, 0, 0}      // < The IPv4 address of the TUN interface's network.
-	TUN_IPv4_NETMASK = []byte{255, 255, 255, 0} // < The IPv4 netmask of the TUN interface.
-
 )
 
-// func main() {
-// 	taptun, mtu, err := OpenTunTap()
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	ch := make(chan []byte, 4096)
-// 	c := make(chan []byte, 4096)
-// 	// go WriteIntoChannel(taptun, c)
-// 	go func() {
-// 		for {
-// 			select {
-// 			case data := <-ch:
-// 				// fmt.Println(len(data), data)
-// 				if (data[0] & 0xf0) == 0x40 {
-// 					srcIp := data[12:16]
-// 					dstIp := data[16:20]
-// 					fmt.Println(net.IP(srcIp), net.IP(dstIp))
-// 				} else if (data[0] & 0xf0) == 0x60 {
-// 					srcIp := data[8:24]
-// 					dstIp := data[24:40]
-// 					fmt.Println(net.IP(srcIp), net.IP(dstIp))
-// 				}
-// 			}
-// 		}
+type tun struct {
+	mtu         int
+	device_path string
+	fd          syscall.Handle
+}
 
-// 	}()
-// 	go WriteIntoChannel(taptun, c)
-// 	if err = ReadFromChannel(taptun, mtu, ch); err != nil {
-// 		panic(err)
-// 	}
-// }
-func OpenTunTap() (syscall.Handle, int, error) {
+func OpenTunTap(addr net.IP, network net.IP, mask net.IP) (Tun, error) {
+	t := new(tun)
 	id, err := getTuntapComponentId()
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
-	device_path := fmt.Sprintf(`\\.\Global\%s.tap`, id)
-	name := syscall.StringToUTF16(device_path)
+	t.device_path = fmt.Sprintf(`\\.\Global\%s.tap`, id)
+	name := syscall.StringToUTF16(t.device_path)
 	tuntap, err := syscall.CreateFile(
 		&name[0],
 		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
@@ -75,12 +46,14 @@ func OpenTunTap() (syscall.Handle, int, error) {
 		syscall.FILE_ATTRIBUTE_SYSTEM|syscall.FILE_FLAG_OVERLAPPED,
 		0)
 	if err != nil {
-		return 0, 0, err
+		fmt.Println("here")
+		return nil, err
 	}
 	var returnLen uint32
-	configTunParam := append(TUN_IPv4_ADDRESS, TUN_IPv4_NETWORK...)
-	configTunParam = append(configTunParam, TUN_IPv4_NETMASK...)
-	configTunParam = configTunParam
+	var configTunParam []byte = append(addr, network...)
+	configTunParam = append(configTunParam, mask...)
+	fmt.Println(configTunParam)
+	configTunParam = []byte{10, 0, 0, 1, 10, 0, 0, 0, 255, 255, 255, 0}
 	if err = syscall.DeviceIoControl(
 		tuntap,
 		TAP_IOCTL_CONFIG_TUN,
@@ -90,23 +63,26 @@ func OpenTunTap() (syscall.Handle, int, error) {
 		uint32(len(configTunParam)),
 		&returnLen,
 		nil); err != nil {
-		return 0, 0, err
+		fmt.Println("here2")
+		return nil, err
 	}
 
 	// get MTU
-	var umtu = make([]byte, 4)
-	if err = syscall.DeviceIoControl(
-		tuntap,
-		TAP_IOCTL_GET_MTU,
-		nil,
-		0,
-		&umtu[0],
-		uint32(len(umtu)),
-		&returnLen,
-		nil); err != nil {
-		return 0, 0, err
-	}
-	mtu := binary.LittleEndian.Uint32(umtu)
+	// var umtu = make([]byte, 4)
+	// if err = syscall.DeviceIoControl(
+	// 	tuntap,
+	// 	TAP_IOCTL_GET_MTU,
+	// 	nil,
+	// 	0,
+	// 	&umtu[0],
+	// 	uint32(len(umtu)),
+	// 	&returnLen,
+	// 	nil); err != nil {
+	// 	fmt.Println("here3")
+	// 	return nil, err
+	// }
+	// mtu := binary.LittleEndian.Uint32(umtu)
+	mtu := 1500
 
 	// set connect.
 	inBuffer := []byte("\x01\x00\x00\x00")
@@ -119,9 +95,11 @@ func OpenTunTap() (syscall.Handle, int, error) {
 		uint32(len(inBuffer)),
 		&returnLen,
 		nil); err != nil {
-		return 0, 0, err
+		return nil, err
 	}
-	return tuntap, int(mtu), nil
+	t.fd = tuntap
+	t.mtu = int(mtu)
+	return t, nil
 }
 
 func getTuntapComponentId() (string, error) {
@@ -177,14 +155,14 @@ func getTuntapComponentId() (string, error) {
 				&netCfgInstanceIdLen); err != nil {
 				return "", err
 			}
-			fmt.Println("last:", unicodeTostring(netCfgInstanceId))
+			fmt.Println("Device:", unicodeTostring(netCfgInstanceId))
 			return unicodeTostring(netCfgInstanceId), nil
 		}
 	}
 	return "", errors.New("not found component id")
 }
 
-func ReadFromChannel(taptun syscall.Handle, mtu int, ch chan []byte) (err error) {
+func (t *tun) Read(ch chan []byte) (err error) {
 	overlappedRx := syscall.Overlapped{}
 	var hevent windows.Handle
 	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
@@ -192,26 +170,31 @@ func ReadFromChannel(taptun syscall.Handle, mtu int, ch chan []byte) (err error)
 		return
 	}
 	overlappedRx.HEvent = syscall.Handle(hevent)
-	buf := make([]byte, mtu)
+	buf := make([]byte, t.mtu)
 	var l uint32
 	for {
-		syscall.ReadFile(taptun, buf, &l, &overlappedRx)
-		syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
+		if err := syscall.ReadFile(t.fd, buf, &l, &overlappedRx); err != nil {
+		}
+		if _, err := syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
+			fmt.Println(err)
+		}
 		overlappedRx.Offset += l
 		totalLen := 0
 		switch buf[0] & 0xf0 {
 		case 0x40:
 			totalLen = 256*int(buf[2]) + int(buf[3])
 		case 0x60:
+			continue
 			totalLen = 256*int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
 		}
+		fmt.Println("read data", buf[:totalLen])
 		send := make([]byte, totalLen)
 		copy(send, buf)
 		ch <- send
 	}
 }
 
-func WriteIntoChannel(taptun syscall.Handle, ch chan []byte) (err error) {
+func (t *tun) Write(ch chan []byte) (err error) {
 	overlappedRx := syscall.Overlapped{}
 	var hevent windows.Handle
 	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
@@ -223,11 +206,15 @@ func WriteIntoChannel(taptun syscall.Handle, ch chan []byte) (err error) {
 		select {
 		case data := <-ch:
 			var l uint32
-			syscall.WriteFile(taptun, data, &l, &overlappedRx)
+			syscall.WriteFile(t.fd, data, &l, &overlappedRx)
 			syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
 			overlappedRx.Offset += uint32(len(data))
 		}
 	}
+}
+
+func (t *tun) Close() error {
+	return syscall.Close(t.fd)
 }
 
 func unicodeTostring(src []byte) string {
