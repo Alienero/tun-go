@@ -50,10 +50,10 @@ func OpenTunTap(addr net.IP, network net.IP, mask net.IP) (Tun, error) {
 		return nil, err
 	}
 	var returnLen uint32
-	var configTunParam []byte = append(addr, network...)
-	configTunParam = append(configTunParam, mask...)
-	fmt.Println(configTunParam)
-	configTunParam = []byte{10, 0, 0, 1, 10, 0, 0, 0, 255, 255, 255, 0}
+    var configTunParam []byte = append(addr.To4(), network.To4()...)
+    configTunParam = append(configTunParam, mask.To4()...)
+    fmt.Println(configTunParam)
+    //configTunParam = []byte{10, 0, 0, 1, 10, 0, 0, 0, 255, 255, 255, 0}
 	if err = syscall.DeviceIoControl(
 		tuntap,
 		TAP_IOCTL_CONFIG_TUN,
