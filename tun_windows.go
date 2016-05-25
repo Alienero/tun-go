@@ -2,7 +2,6 @@ package tun
 
 import (
 	// "encoding/binary"
-	"errors"
 	"fmt"
 	"net"
 	"syscall"
