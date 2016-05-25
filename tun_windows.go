@@ -160,19 +160,19 @@ func (t *tun) Read(ch chan []byte) (err error) {
 		if _, err := syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
 			fmt.Println(err)
 		}
-		overlappedRx.Offset += l
-		totalLen := 0
-		switch buf[0] & 0xf0 {
-		case 0x40:
-			totalLen = 256*int(buf[2]) + int(buf[3])
-		case 0x60:
-			continue
-			totalLen = 256*int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
-		}
-		fmt.Println("read data", buf[:totalLen])
-		send := make([]byte, totalLen)
-		copy(send, buf)
-		ch <- send
+        //overlappedRx.Offset += l
+        totalLen := overlappedRx.InternalHigh
+        /*switch buf[0] & 0xf0 {
+        case 0x40:
+            totalLen = 256 * int(buf[2]) + int(buf[3])
+        case 0x60:
+            continue
+            totalLen = 256 * int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
+        }*/
+        //fmt.Println("read data", buf[:totalLen])
+        send := make([]byte, totalLen)
+        copy(send, buf)
+        ch <- send
 	}
 }
 
