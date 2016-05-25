@@ -103,63 +103,45 @@ func OpenTunTap(addr net.IP, network net.IP, mask net.IP) (Tun, error) {
 }
 
 func getTuntapComponentId() (string, error) {
-	adapters, err := registry.OpenKey(registry.LOCAL_MACHINE, ADAPTER_KEY, registry.READ)
-	if err != nil {
-		return "", err
-	}
-	var i uint32
-	for ; i < 1000; i++ {
-		var name_length uint32 = TAPWIN32_MAX_REG_SIZE
-		buf := make([]uint16, name_length)
-		if err = syscall.RegEnumKeyEx(
-			syscall.Handle(adapters),
-			i,
-			&buf[0],
-			&name_length,
-			nil,
-			nil,
-			nil,
-			nil); err != nil {
-			return "", err
-		}
-		key_name := syscall.UTF16ToString(buf[:])
-		adapter, err := registry.OpenKey(adapters, key_name, registry.READ)
-		if err != nil {
-			return "", err
-		}
-		name := syscall.StringToUTF16("ComponentId")
-		name2 := syscall.StringToUTF16("NetCfgInstanceId")
-		var valtype uint32
-		var component_id = make([]byte, TAPWIN32_MAX_REG_SIZE)
-		var componentLen = uint32(len(component_id))
-		if err = syscall.RegQueryValueEx(
-			syscall.Handle(adapter),
-			&name[0],
-			nil,
-			&valtype,
-			&component_id[0],
-			&componentLen); err != nil {
-			return "", err
-		}
+    k, err := registry.OpenKey(registry.LOCAL_MACHINE,
+        ADAPTER_KEY,
+        registry.ENUMERATE_SUB_KEYS | registry.QUERY_VALUE)
+    if err != nil {
+        return "", err
+    }
+    defer k.Close()
 
-		if unicodeTostring(component_id) == TUNTAP_COMPONENT_ID {
-			var valtype uint32
-			var netCfgInstanceId = make([]byte, TAPWIN32_MAX_REG_SIZE)
-			var netCfgInstanceIdLen = uint32(len(netCfgInstanceId))
-			if err = syscall.RegQueryValueEx(
-				syscall.Handle(adapter),
-				&name2[0],
-				nil,
-				&valtype,
-				&netCfgInstanceId[0],
-				&netCfgInstanceIdLen); err != nil {
-				return "", err
-			}
-			fmt.Println("Device:", unicodeTostring(netCfgInstanceId))
-			return unicodeTostring(netCfgInstanceId), nil
-		}
-	}
-	return "", errors.New("not found component id")
+    names, err := k.ReadSubKeyNames(-1)
+    if err != nil {
+        return "", err
+    }
+
+    for _, name := range names {
+        n, _ := matchKey(k, name, TUNTAP_COMPONENT_ID)
+        if n != "" {
+            return n, nil
+        }
+    }
+    return "", fmt.Errorf("Not Found")
+
+}
+func matchKey(zones registry.Key, kname string, componentId string) (string, error) {
+    k, err := registry.OpenKey(zones, kname, registry.READ)
+    if err != nil {
+        return "", err
+    }
+    defer k.Close()
+
+    cId, _, err := k.GetStringValue("ComponentId")
+    if cId == componentId {
+        netCfgInstanceId, _, err := k.GetStringValue("NetCfgInstanceId")
+        if err != nil {
+            return "", err
+        }
+        return netCfgInstanceId, nil
+
+    }
+    return "", fmt.Errorf("ComponentId != componentId")
 }
 
 func (t *tun) Read(ch chan []byte) (err error) {
